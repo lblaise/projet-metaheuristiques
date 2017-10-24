@@ -170,6 +170,8 @@ pair<vector<pair<int, int> >, vector<vector<bool> > > Problem::getNotConnectedSe
 
 
 void Problem::randomFeasibleSolution() {
+	int compteur1 = 0;
+	int compteur2 = 0;
 	// empty the grid
 	for (int r = 0; r<dimensions.first; r++)
 		for (int c = 0; c<dimensions.second; c++)
@@ -178,6 +180,7 @@ void Problem::randomFeasibleSolution() {
 	vector<pair<int, int> > notCoveredPositions;
 	// place sensors at random positions while not all positions in the grid are covered
 	while (1) {
+		compteur1++;
 		notCoveredPositions = getNotCoveredPositions();
 		// all positions in the grid are covered: break
 		if (notCoveredPositions.size() == 0)
@@ -186,23 +189,9 @@ void Problem::randomFeasibleSolution() {
 		// place a sensor at a random non covered position
 		pair<int, int> position = notCoveredPositions[rand() % notCoveredPositions.size()];
 		placeSensor(position.first, position.second);
-	}
 
-	pair<vector<pair<int, int> >, vector<vector<bool> > > NAME;
-	vector<pair<int, int> > notConnectedSensors;
-	vector<vector<bool> > connected;
-	// make paths of sensors to connected every disconnected sensor to the well
-	while (1) {
-		NAME = getNotConnectedSensors();
-		notConnectedSensors = NAME.first;
-		connected = NAME.second;
-		// all sensors are connected to the well: break
-		if (notConnectedSensors.size() == 0)
-			break;
-
-		// create a path of sensors connecting a random disconnected sensor to the well
-		pair<int, int> position = notConnectedSensors[rand() % notConnectedSensors.size()];
-		vector<pair<int, int> > path = connectSensor(position.first, position.second, connected);
+		// connect the sensor to the well: add a sensor path connecting the sensor to the closest connected sensor
+		vector<pair<int, int> > path = connectSensor(position.first, position.second, getNotConnectedSensors().second);
 		for (vector<pair<int, int> >::iterator it = path.begin(); it < path.end(); it++) {
 			placeSensor((*it).first, (*it).second);
 		}
@@ -215,6 +204,8 @@ void Problem::randomFeasibleSolution() {
 				removeSensor(r, c);
 				if (!isGridCovered() || !areSensorsConnected())
 					placeSensor(r, c);
+				else
+					compteur2++;
 			}
 		}
 	}
@@ -257,7 +248,7 @@ vector<pair<int, int> > Problem::connectSensor(int r, int c, const vector<vector
 		}
 	}
 
-writePath:
+	writePath:
 	vector<pair<int, int> > path;
 	// no connected sensor and no well: empty path
 	if (closestConnectedSensor.first == -1 && closestConnectedSensor.second == -1)
@@ -294,4 +285,38 @@ void Problem::printGrid() {
 		}
 		cout << endl;
 	}
+}
+
+
+int Problem::lowerBound() {
+	// the first sensor can cover n1 positions on the grid
+	int n1 = 0;
+	for (int i = -Rcapt; i <= Rcapt; i++) {
+		for (int j = -Rcapt; j <= Rcapt; j++) {
+			if (i*i + j*j <= Rcapt*Rcapt)
+				n1++;
+		}
+	}
+	// another sensor at position (x,y), connected to a previously added sensor at position (x+i0,y+j0),
+	// can cover at most n2 positions on the grid
+	int n2 = 0;
+	for (int i0 = 0; i0 <= Rcom; i0++) {
+		// sensor at position (x,y) can cover n2Temp new positions on the grid if there is a sensor at position (i0,j0)
+		int n2Temp = 0;
+		int j0 = sqrt(Rcom*Rcom - i0*i0);
+		if (i0*i0 + j0*j0 == Rcom*Rcom){
+			for (int i = -Rcapt; i <= Rcapt; i++) {
+				for (int j = -Rcapt; j <= Rcapt; j++) {
+					// position (x+i,y+j) is covered by the new sensor at position (x,y) 
+					//but not by the already connected sensor at position (x+i0,y+j0)
+					if ((i*i + j*j <= Rcapt*Rcapt) && ((i0 - i)*(i0 - i) + (j0 - j)*(j0 - j) > Rcapt*Rcapt)) {
+						n2Temp++;
+					}
+				}
+			}
+		}
+		n2 = max(n2, n2Temp);
+	}
+	//cout << "n1 = " << n1 << ", n2 = " << n2 << endl;
+	return ceil(1 + (dimensions.first*dimensions.second - n1) / float(n2));
 }
