@@ -8,14 +8,21 @@ Problem::Problem(int nrows, int ncols, int rcapt, int rcom)
 {
 	dimensions = make_pair(nrows, ncols);
 	grid = vector<vector<bool> >(nrows, vector<bool>(ncols, false));
+	cover = vector<vector<int> >(nrows, vector<int>(ncols, 0));
 	Rcapt = rcapt;
 	Rcom = rcom;
 	nbSensors = 0;
+	nbNotCoveredPositions = nrows*ncols;
 }
 
 
 vector<vector<bool> > Problem::getGrid() {
 	return grid;
+}
+
+
+vector<vector<int> > Problem::getCover() {
+	return cover;
 }
 
 
@@ -39,11 +46,25 @@ int Problem::getNbSensors() {
 }
 
 
+int Problem::getNbNotCoveredPositions() {
+	return nbNotCoveredPositions;
+}
+
+
 
 void Problem::placeSensor(int r, int c) {
 	if (!grid[r][c]) {
 		grid[r][c] = true;
 		nbSensors++;
+		for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
+			for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
+				if ((r - i)*(r - i) + (c - j)*(c - j) <= Rcapt*Rcapt) {
+					if (!cover[i][j])
+						nbNotCoveredPositions--;
+					cover[i][j]++;
+				}
+			}
+		}
 	}
 }
 
@@ -52,8 +73,26 @@ void Problem::removeSensor(int r, int c) {
 	if (grid[r][c]) {
 		grid[r][c] = false;
 		nbSensors--;
+		for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
+			for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
+				if ((r - i)*(r - i) + (c - j)*(c - j) <= Rcapt*Rcapt) {
+					cover[i][j]--;
+					if (!cover[i][j])
+						nbNotCoveredPositions++;
+				}
+			}
+		}
 	}
 }
+
+
+void Problem::neighbour(int r, int c) {
+	if (grid[r][c])
+		removeSensor(r, c);
+	else
+		placeSensor(r, c);
+}
+
 
 
 bool Problem::isGridCovered() {
@@ -115,19 +154,7 @@ vector<pair<int, int> > Problem::getNotCoveredPositions() {
 	vector<pair<int, int> > notCoveredPositions;
 	for (int r = 0; r<dimensions.first; r++) {
 		for (int c = 0; c<dimensions.second; c++) {
-			bool covered = grid[r][c];
-			// is position (r,c) covered by a sensor at position (i,j) such that sqrt((r-i)^2 + (c-j)^2) <= Rcapt?
-			for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
-				for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
-					if ((r - i)*(r - i) + (c - j)*(c - j) <= Rcapt*Rcapt) {
-						covered = covered || grid[i][j];
-						if (covered)
-							goto next;
-					}
-				}
-			}
-		next:
-			if (!covered && !(r == 0 && c == 0))
+			if (!cover[r][c])
 				notCoveredPositions.push_back(make_pair(r, c));
 		}
 	}
@@ -170,17 +197,14 @@ pair<vector<pair<int, int> >, vector<vector<bool> > > Problem::getNotConnectedSe
 
 
 void Problem::randomFeasibleSolution() {
-	int compteur1 = 0;
-	int compteur2 = 0;
 	// empty the grid
-	for (int r = 0; r<dimensions.first; r++)
-		for (int c = 0; c<dimensions.second; c++)
+	for (int r = 0; r < dimensions.first; r++)
+		for (int c = 0; c < dimensions.second; c++)
 			removeSensor(r, c);
 
 	vector<pair<int, int> > notCoveredPositions;
 	// place sensors at random positions while not all positions in the grid are covered
 	while (1) {
-		compteur1++;
 		notCoveredPositions = getNotCoveredPositions();
 		// all positions in the grid are covered: break
 		if (notCoveredPositions.size() == 0)
@@ -202,10 +226,15 @@ void Problem::randomFeasibleSolution() {
 		for (int c = 0; c<dimensions.second; c++) {
 			if (grid[r][c]) {
 				removeSensor(r, c);
-				if (!isGridCovered() || !areSensorsConnected())
+				bool undo = !areSensorsConnected();
+				for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
+					for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
+						if ((r-i)*(r-i) + (c-j)*(c-j) <= Rcapt*Rcapt)
+							undo = undo || !cover[i][j];
+					}
+				}
+				if (undo)
 					placeSensor(r, c);
-				else
-					compteur2++;
 			}
 		}
 	}
