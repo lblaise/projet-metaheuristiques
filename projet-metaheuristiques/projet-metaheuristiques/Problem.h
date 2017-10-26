@@ -19,14 +19,15 @@ private:
 
 public:
 	Problem(int nrows, int ncols, int rcapt, int rcom);
-	vector<vector<bool> > getGrid();
-	vector<vector<int> > getCover();
-	pair<int, int> getDimensions();
-	int getRcapt();
-	int getRcom();
-	int getNbSensors();
-
-	int	getNbNotCoveredPositions();
+	Problem(const Problem & p);
+	void setProblem(const Problem & p);
+	vector<vector<bool> > getGrid() const;
+	vector<vector<int> > getCover() const;
+	pair<int, int> getDimensions() const;
+	int getRcapt() const;
+	int getRcom() const;
+	int getNbSensors() const;
+	int	getNbNotCoveredPositions() const;
 
 	void placeSensor(int r, int c);
 	void removeSensor(int r, int c);
@@ -41,4 +42,5 @@ public:
 
 	void printGrid();
 	int lowerBound();
+	float getObjectiveValue();
 };

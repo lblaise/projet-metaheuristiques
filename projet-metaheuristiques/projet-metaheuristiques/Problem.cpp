@@ -16,37 +16,59 @@ Problem::Problem(int nrows, int ncols, int rcapt, int rcom)
 }
 
 
-vector<vector<bool> > Problem::getGrid() {
+Problem::Problem(const Problem & p) {
+	dimensions = p.getDimensions();
+	grid = p.getGrid();
+	cover = p.getCover();
+	Rcapt = p.getRcapt();
+	Rcom = p.getRcom();
+	nbSensors = p.getNbSensors(); 
+	nbNotCoveredPositions = p.getNbNotCoveredPositions();
+}
+
+
+void Problem::setProblem(const Problem & p) {
+	dimensions = p.getDimensions();
+	grid = p.getGrid();
+	cover = p.getCover();
+	Rcapt = p.getRcapt();
+	Rcom = p.getRcom();
+	nbSensors = p.getNbSensors();
+	nbNotCoveredPositions = p.getNbNotCoveredPositions();
+}
+
+
+vector<vector<bool> > Problem::getGrid() const {
 	return grid;
 }
 
 
-vector<vector<int> > Problem::getCover() {
+vector<vector<int> > Problem::getCover() const {
 	return cover;
 }
 
 
-pair<int, int> Problem::getDimensions() {
+pair<int, int> Problem::getDimensions() const {
 	return dimensions;
 }
 
 
-int Problem::getRcapt() {
+int Problem::getRcapt() const {
 	return Rcapt;
 }
 
 
-int Problem::getRcom() {
+int Problem::getRcom() const {
 	return Rcom;
 }
 
 
-int Problem::getNbSensors() {
+int Problem::getNbSensors() const {
 	return nbSensors;
 }
 
 
-int Problem::getNbNotCoveredPositions() {
+int Problem::getNbNotCoveredPositions() const {
 	return nbNotCoveredPositions;
 }
 
@@ -293,7 +315,6 @@ vector<pair<int, int> > Problem::connectSensor(int r, int c, const vector<vector
 
 
 void Problem::printGrid() {
-	cout << "Rcapt = " << Rcapt << ", Rcom = " << Rcom << endl << endl;
 	// "O" at position (0,0) represents the well
 	cout << " O";
 	for (int c = 1; c<dimensions.second; c++) {
@@ -348,4 +369,10 @@ int Problem::lowerBound() {
 	}
 	//cout << "n1 = " << n1 << ", n2 = " << n2 << endl;
 	return ceil(1 + (dimensions.first*dimensions.second - n1) / float(n2));
+}
+
+
+
+float Problem::getObjectiveValue() {
+	return nbSensors + ALPHA * nbNotCoveredPositions + BETA * 0;
 }
