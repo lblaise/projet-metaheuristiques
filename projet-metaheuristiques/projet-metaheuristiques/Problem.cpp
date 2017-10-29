@@ -17,13 +17,7 @@ Problem::Problem(int nrows, int ncols, int rcapt, int rcom)
 
 
 Problem::Problem(const Problem & p) {
-	dimensions = p.getDimensions();
-	grid = p.getGrid();
-	cover = p.getCover();
-	Rcapt = p.getRcapt();
-	Rcom = p.getRcom();
-	nbSensors = p.getNbSensors(); 
-	nbNotCoveredPositions = p.getNbNotCoveredPositions();
+	setProblem(p);
 }
 
 
@@ -78,6 +72,7 @@ void Problem::placeSensor(int r, int c) {
 	if (!grid[r][c]) {
 		grid[r][c] = true;
 		nbSensors++;
+		// update covered positions
 		for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
 			for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
 				if ((r - i)*(r - i) + (c - j)*(c - j) <= Rcapt*Rcapt) {
@@ -87,6 +82,7 @@ void Problem::placeSensor(int r, int c) {
 				}
 			}
 		}
+		// update number of connected components?
 	}
 }
 
@@ -95,6 +91,7 @@ void Problem::removeSensor(int r, int c) {
 	if (grid[r][c]) {
 		grid[r][c] = false;
 		nbSensors--;
+		// update covered positions
 		for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
 			for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
 				if ((r - i)*(r - i) + (c - j)*(c - j) <= Rcapt*Rcapt) {
@@ -104,6 +101,7 @@ void Problem::removeSensor(int r, int c) {
 				}
 			}
 		}
+		// update number of connected components?
 	}
 }
 
@@ -116,28 +114,6 @@ void Problem::neighbour(int r, int c) {
 }
 
 
-
-bool Problem::isGridCovered() {
-	for (int r = 0; r<dimensions.first; r++) {
-		for (int c = 0; c<dimensions.second; c++) {
-			bool covered = grid[r][c];
-			// is position (r,c) covered by a sensor at position (i,j) such that sqrt((r-i)^2 + (c-j)^2) <= Rcapt?
-			for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
-				for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
-					if ((r - i)*(r - i) + (c - j)*(c - j) <= Rcapt*Rcapt) {
-						covered = covered || grid[i][j];
-						if (covered)
-							goto next;
-					}
-				}
-			}
-		next:
-			if (!covered && !(r == 0 && c == 0))
-				return false;
-		}
-	}
-	return true;
-}
 
 
 bool Problem::areSensorsConnected() {
@@ -184,8 +160,7 @@ vector<pair<int, int> > Problem::getNotCoveredPositions() {
 }
 
 
-pair<vector<pair<int, int> >, vector<vector<bool> > > Problem::getNotConnectedSensors() {
-	vector<pair<int, int> > notConnectedSensors;
+vector<vector<bool> > Problem::getConnectedSensors() {
 	vector<vector<bool> > visited(dimensions.first, vector<bool>(dimensions.second, false));
 	queue<pair<int, int> > Q;
 	// BFS
@@ -205,15 +180,7 @@ pair<vector<pair<int, int> >, vector<vector<bool> > > Problem::getNotConnectedSe
 			}
 		}
 	}
-
-	for (int r = 0; r<dimensions.first; r++) {
-		for (int c = 0; c<dimensions.second; c++) {
-			// sensor at position (r,c) is not connected to the well
-			if (grid[r][c] && !visited[r][c])
-				notConnectedSensors.push_back(make_pair(r, c));
-		}
-	}
-	return make_pair(notConnectedSensors, visited);
+	return visited;
 }
 
 
@@ -237,7 +204,7 @@ void Problem::randomFeasibleSolution() {
 		placeSensor(position.first, position.second);
 
 		// connect the sensor to the well: add a sensor path connecting the sensor to the closest connected sensor
-		vector<pair<int, int> > path = connectSensor(position.first, position.second, getNotConnectedSensors().second);
+		vector<pair<int, int> > path = connectSensor(position.first, position.second, getConnectedSensors());
 		for (vector<pair<int, int> >::iterator it = path.begin(); it < path.end(); it++) {
 			placeSensor((*it).first, (*it).second);
 		}
@@ -248,14 +215,7 @@ void Problem::randomFeasibleSolution() {
 		for (int c = 0; c<dimensions.second; c++) {
 			if (grid[r][c]) {
 				removeSensor(r, c);
-				bool undo = !areSensorsConnected();
-				for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
-					for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
-						if ((r-i)*(r-i) + (c-j)*(c-j) <= Rcapt*Rcapt)
-							undo = undo || !cover[i][j];
-					}
-				}
-				if (undo)
+				if (nbNotCoveredPositions > 0 || !areSensorsConnected())
 					placeSensor(r, c);
 			}
 		}
@@ -265,14 +225,11 @@ void Problem::randomFeasibleSolution() {
 
 vector<pair<int, int> > Problem::connectSensor(int r, int c, const vector<vector<bool> > & connected) {
 	vector<vector<bool> > visited(dimensions.first, vector<bool>(dimensions.second, false));
-	// dist[rr][cc] = minimum nb of steps to access (rr,cc) from (r,c) (DFS)
-	vector<vector<int> > dist(dimensions.first, vector<int>(dimensions.second, -1));
 	vector<vector<pair<int, int > > > predecessors(dimensions.first, vector<pair<int, int> >(dimensions.second, make_pair(-1, -1)));
-	dist[r][c] = 0;
-
+	
 	// create a sensor path between (r,c) and closestConnectedSensor to connect (r,c) to the well at position (0,0)
 	pair<int, int> closestConnectedSensor = make_pair(-1, -1);
-	// DFS gives minimum distances
+	// DFS gives minimum distances on the grid, hence closest connected sensor
 	queue<pair<int, int> > Q;
 	Q.push(make_pair(r, c));
 	while (!Q.empty()) {
@@ -283,9 +240,8 @@ vector<pair<int, int> > Problem::connectSensor(int r, int c, const vector<vector
 			visited[rr][cc] = true;
 			for (int i = max(0, rr - Rcom); i < min(dimensions.first, rr + Rcom + 1); i++) {
 				for (int j = max(0, cc - Rcom); j < min(dimensions.second, cc + Rcom + 1); j++) {
-					if (((rr - i)*(rr - i) + (cc - j)*(cc - j) <= Rcom*Rcom) && dist[i][j] == -1) {
-						// position (i,j) not visited yet, distance dist(rr, cc)+1, predecessor (rr,cc)
-						dist[i][j] = dist[rr][cc] + 1;
+					if (((rr - i)*(rr - i) + (cc - j)*(cc - j) <= Rcom*Rcom) && predecessors[i][j].first == -1) {
+						// position (i,j) not visited yet, predecessor (rr,cc) (and distance dist(rr, cc)+1)
 						predecessors[i][j] = make_pair(rr, cc);
 						Q.push(make_pair(i, j));
 						// connected sensor at position (i,j): (i,j) is the closest connected sensor
@@ -307,7 +263,7 @@ vector<pair<int, int> > Problem::connectSensor(int r, int c, const vector<vector
 
 	// minimum path between (r,c) and closestConnectedSensor
 	path.push_back(closestConnectedSensor);
-	while (dist[path.back().first][path.back().second] != 0) {
+	while (predecessors[path.back().first][path.back().second] != make_pair(r, c)) {
 		path.push_back(predecessors[path.back().first][path.back().second]);
 	}
 	return path;
@@ -374,5 +330,39 @@ int Problem::lowerBound() {
 
 
 float Problem::getObjectiveValue() {
-	return nbSensors + ALPHA * nbNotCoveredPositions + BETA * 0;
+	return nbSensors + ALPHA * nbNotCoveredPositions + BETA * (getNbCCTest() - 1);
+}
+
+
+int Problem::getNbCCTest() {
+	int nbCC = 0;
+
+	vector<vector<bool> > visited(dimensions.first, vector<bool>(dimensions.second, false));
+
+	for (int r = 0; r < dimensions.first; r++) {
+		for (int c = 0; c < dimensions.second; c++) {
+			if (grid[r][c] && !visited[r][c]) {
+				nbCC++;
+				// BFS
+				queue<pair<int, int> > Q;
+				Q.push(make_pair(r, c));
+				while (!Q.empty()) {
+					int rr = Q.front().first;
+					int cc = Q.front().second;
+					Q.pop();
+					if (!visited[rr][cc]) {
+						visited[rr][cc] = true;
+						for (int i = max(0, rr - Rcom); i < min(dimensions.first, rr + Rcom + 1); i++) {
+							for (int j = max(0, cc - Rcom); j < min(dimensions.second, cc + Rcom + 1); j++) {
+								if (((rr - i)*(rr - i) + (cc - j)*(cc - j) <= Rcom*Rcom) && grid[i][j]) {
+									Q.push(make_pair(i, j));
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return nbCC;
 }

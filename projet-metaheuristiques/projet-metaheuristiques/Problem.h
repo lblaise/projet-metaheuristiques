@@ -32,15 +32,15 @@ public:
 	void placeSensor(int r, int c);
 	void removeSensor(int r, int c);
 	void neighbour(int r, int c);
-	bool isGridCovered();
 	bool areSensorsConnected();
 
 	vector<pair<int, int> > getNotCoveredPositions();
-	pair<vector<pair<int, int> >, vector<vector<bool> > > getNotConnectedSensors();
+	vector<vector<bool> > getConnectedSensors();
 
 	void randomFeasibleSolution();
 
 	void printGrid();
 	int lowerBound();
 	float getObjectiveValue();
+	int getNbCCTest();
 };
