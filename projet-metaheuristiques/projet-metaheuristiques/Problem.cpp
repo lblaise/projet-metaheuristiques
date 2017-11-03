@@ -13,6 +13,7 @@ Problem::Problem(int nrows, int ncols, int rcapt, int rcom)
 	Rcom = rcom;
 	nbSensors = 0;
 	nbNotCoveredPositions = nrows*ncols;
+	nbConnectedComponents = 0;
 }
 
 
@@ -29,6 +30,7 @@ void Problem::setProblem(const Problem & p) {
 	Rcom = p.getRcom();
 	nbSensors = p.getNbSensors();
 	nbNotCoveredPositions = p.getNbNotCoveredPositions();
+	nbConnectedComponents = p.getNbConnectedComponents();
 }
 
 
@@ -68,8 +70,17 @@ int Problem::getNbNotCoveredPositions() const {
 
 
 
+int Problem::getNbConnectedComponents() const {
+	return nbConnectedComponents;
+}
+
+
+
 void Problem::placeSensor(int r, int c) {
 	if (!grid[r][c]) {
+		// update number of connected components
+		checkConnectivityChange(r, c, false);
+		
 		grid[r][c] = true;
 		nbSensors++;
 		// update covered positions
@@ -82,7 +93,6 @@ void Problem::placeSensor(int r, int c) {
 				}
 			}
 		}
-		// update number of connected components?
 	}
 }
 
@@ -101,11 +111,13 @@ void Problem::removeSensor(int r, int c) {
 				}
 			}
 		}
-		// update number of connected components?
+		// update number of connected components
+		checkConnectivityChange(r, c, true);
 	}
 }
 
 
+// neighbour grid: add or remove a sensor at position (r, c): Hamming distance from the previous grid = 1
 void Problem::neighbour(int r, int c) {
 	if (grid[r][c])
 		removeSensor(r, c);
@@ -190,7 +202,7 @@ void Problem::randomFeasibleSolution() {
 	for (int r = 0; r < dimensions.first; r++)
 		for (int c = 0; c < dimensions.second; c++)
 			removeSensor(r, c);
-
+	
 	vector<pair<int, int> > notCoveredPositions;
 	// place sensors at random positions while not all positions in the grid are covered
 	while (1) {
@@ -215,7 +227,7 @@ void Problem::randomFeasibleSolution() {
 		for (int c = 0; c<dimensions.second; c++) {
 			if (grid[r][c]) {
 				removeSensor(r, c);
-				if (nbNotCoveredPositions > 0 || !areSensorsConnected())
+				if (nbNotCoveredPositions > 0 || nbConnectedComponents > 1)
 					placeSensor(r, c);
 			}
 		}
@@ -268,6 +280,177 @@ vector<pair<int, int> > Problem::connectSensor(int r, int c, const vector<vector
 	}
 	return path;
 }
+
+
+
+void Problem::checkConnectivityChange(int r, int c, bool removal) {
+	int Dcc = 0;	// Delta number of connected components
+	int nbNearbySensors = 0;	// number of sensors within a <= Rcom range of position (r, c)
+	vector<pair<int, int> > nearbySensorsList;		// sensors within a <= Rcom range of position (r, c)
+
+	// if a sensor was removed from position (r, c)
+	if (removal) {
+		getNearbySensors(r, c, nearbySensorsList, nbNearbySensors);
+
+		// the sensor was not connected to any other sensor
+		if (nbNearbySensors == 0) {
+			Dcc = -1;
+		}
+
+		// the sensor was connected to several other sensors
+		else if (nbNearbySensors > 1) {
+			vector<bool> verifiedNearbySensors(nbNearbySensors, false);
+			bool totalVerification = false;
+			while (!totalVerification) {
+				checkConnectivity(nearbySensorsList, verifiedNearbySensors, totalVerification, Dcc, nbNearbySensors);
+			}
+		}
+
+		else {
+			Dcc = 0;
+		}
+	}
+
+	// if a sensor was placed at position (r, c)
+	else if (nbConnectedComponents > 1) {
+		getNearbySensors(r, c, nearbySensorsList, nbNearbySensors);
+
+		// the new sensor is not connected to any other sensor
+		if (nbNearbySensors == 0) {
+			Dcc = 1;
+		}
+
+		// the new sensor is connected to several other sensors
+		else if (nbNearbySensors > 1) {
+			vector<bool> verifiedNearbySensors(nbNearbySensors, false);
+			bool totalVerification = false;
+			while (!totalVerification) {
+				checkConnectivity(nearbySensorsList, verifiedNearbySensors, totalVerification, Dcc, nbNearbySensors);
+			}
+			Dcc *= -1;
+		}
+
+		// the new sensor is connected to a unique other sensor
+		else {
+			Dcc = 0;
+		}
+	}
+
+	else if (nbConnectedComponents == 1) {
+		// the new sensor is connected to another sensor
+		if (isThereNearbySensor(r, c)) {
+			Dcc = 0;
+		}
+		else {
+			Dcc = 1;
+		}
+	}
+
+	// the grid was empty before placing the new sensor
+	else {
+		Dcc = 1;
+	}
+
+	// update the number of connected components
+	nbConnectedComponents += Dcc;
+}
+
+
+
+void Problem::checkConnectivity(const vector<pair<int, int>>& nearbySensorsList, vector<bool> & verifiedNearbySensors, bool & totalVerification, int & Dcc, int nbNearbySensors) {
+	vector<vector<bool> > visited(dimensions.first, vector<bool>(dimensions.second, false));
+
+	for (int i = 0; i < nbNearbySensors; i++) {
+		if (!verifiedNearbySensors[i]) {
+			// no connected component linking all positions between nearbySensorsList[index] and nearbySensorsList[nbNearbySensors-1]
+			if (!browseConnectedComponent(nearbySensorsList, visited, i, verifiedNearbySensors, nbNearbySensors)) {
+				Dcc++;
+			}
+		}
+	}
+
+	bool verification = true;
+	for (int i = 0; i < nbNearbySensors; i++) {
+		verification = verification && verifiedNearbySensors[i];
+	}
+
+	totalVerification = verification;
+}
+
+
+
+// returns true if there exists a connected component linking all positions in the grid 
+// between nearbySensorsList[index] and nearbySensorsList[nbNearbySensors-1]
+bool Problem::browseConnectedComponent(const vector<pair<int, int>>& nearbySensorsList, vector<vector<bool>>& visited, int index, vector<bool> & verifiedNearbySensors, int nbNearbySensors) {
+	queue<pair<int, int> > Q;
+	Q.push(nearbySensorsList[index]);
+
+	bool verification = true;
+	for (int i = 0; i < nbNearbySensors; i++) {
+		verification = verification && verifiedNearbySensors[i];
+	}
+
+	while (!Q.empty() && !verification) {
+		int rr = Q.front().first;
+		int cc = Q.front().second;
+		Q.pop();
+
+		if (!visited[rr][cc]) {
+			visited[rr][cc] = true;
+			
+			for (int i = index; i < nbNearbySensors; i++) {
+				if (rr == nearbySensorsList[i].first && cc == nearbySensorsList[i].second) {
+					verifiedNearbySensors[i] = true;
+					verification = true;
+					
+					for (int j = index; j < nbNearbySensors; j++) {
+						verification = verification && verifiedNearbySensors[j];
+					}
+				}
+			}
+
+			for (int i = max(0, rr - Rcom); i < min(dimensions.first, rr + Rcom + 1); i++) {
+				for (int j = max(0, cc - Rcom); j < min(dimensions.second, cc + Rcom + 1); j++) {
+					if (grid[i][j] && (rr - i)*(rr - i) + (cc - j)*(cc - j) <= Rcom*Rcom) {
+						Q.push(make_pair(i, j));
+					}
+				}
+			}
+		}
+	}
+
+	return verification;
+}
+
+
+
+// sensors within a <= Rcom distance from position (r, c)
+void Problem::getNearbySensors(int r, int c, vector<pair<int, int> > & nearbySensorsList, int & nbNearbySensors) {
+	for (int i = max(0, r - Rcom); i < min(dimensions.first, r + Rcom + 1); i++) {
+		for (int j = max(0, c - Rcom); j < min(dimensions.second, c + Rcom + 1); j++) {
+			if (grid[i][j] && (r - i)*(r - i) + (c - j)*(c - j) <= Rcom*Rcom) {
+				nbNearbySensors++;
+				pair<int, int> pair = make_pair(i, j);
+				nearbySensorsList.insert(nearbySensorsList.end(), pair);
+			}
+		}
+	}
+}
+
+
+
+// returns true if there is a sensor in the grid within a <= Rcom distance from position (r, c)
+bool Problem::isThereNearbySensor(int r, int c) {
+	for (int i = max(0, r - Rcom); i < min(dimensions.first, r + Rcom + 1); i++) {
+		for (int j = max(0, c - Rcom); j < min(dimensions.second, c + Rcom + 1); j++) {
+			if (grid[i][j] && (r - i)*(r - i) + (c - j)*(c - j) <= Rcom*Rcom) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 
 
 void Problem::printGrid() {
@@ -365,4 +548,27 @@ int Problem::getNbCCTest() {
 		}
 	}
 	return nbCC;
+}
+
+
+
+void Problem::setFromFile(string fileName) {
+	ifstream myFile(fileName);
+	if (myFile.is_open()) {
+		myFile >> dimensions.first >> dimensions.second >> Rcapt >> Rcom;
+		char x;
+		myFile.get(x);	//"\n"
+		for (int r = 0; r < dimensions.first; r++) {
+			for (int c = 0; c < dimensions.second; c++) {
+				myFile.get(x);
+				if (x == '.') {
+					removeSensor(r, c);
+				}
+				else if (x == 'x') {
+					placeSensor(r, c);
+				}
+			}
+			myFile.get(x);	//"\n"
+		}
+	}
 }
