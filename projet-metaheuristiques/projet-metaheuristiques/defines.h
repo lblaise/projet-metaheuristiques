@@ -8,3 +8,4 @@
 #define ALPHA 1
 #define BETA 1
 #define LEN_TABOO 3
+#define FREQUENT 5

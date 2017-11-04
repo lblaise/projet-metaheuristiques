@@ -15,7 +15,6 @@ private:
 	int nbNotCoveredPositions;
 	int nbConnectedComponents;
 
-public:
 	vector<pair<int, int> > connectSensor(int r, int c, const vector<vector<bool> > & connected);
 	void checkConnectivityChange(int r, int c, bool removal);
 	void checkConnectivity(const vector<pair<int, int> > & nearbySensorsList, vector<bool> & verifiedNearbySensors, bool & totalVerification, int & Dcc, int nbNearbySensors);
@@ -46,7 +45,7 @@ public:
 	vector<pair<int, int> > getNotCoveredPositions();
 	vector<vector<bool> > getConnectedSensors();
 
-	void randomFeasibleSolution();
+	void randomFeasibleSolution(const vector<pair<int, int> > & goodCoordinates = vector<pair<int, int> > ());
 
 	void printGrid();
 	int lowerBound();

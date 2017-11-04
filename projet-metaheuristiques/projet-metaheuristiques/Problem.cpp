@@ -87,7 +87,7 @@ void Problem::placeSensor(int r, int c) {
 		for (int i = max(0, r - Rcapt); i < min(dimensions.first, r + Rcapt + 1); i++) {
 			for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
 				if ((r - i)*(r - i) + (c - j)*(c - j) <= Rcapt*Rcapt) {
-					if (!cover[i][j])
+					if (!cover[i][j] && !(i==0 && j==0))
 						nbNotCoveredPositions--;
 					cover[i][j]++;
 				}
@@ -106,7 +106,7 @@ void Problem::removeSensor(int r, int c) {
 			for (int j = max(0, c - Rcapt); j < min(dimensions.second, c + Rcapt + 1); j++) {
 				if ((r - i)*(r - i) + (c - j)*(c - j) <= Rcapt*Rcapt) {
 					cover[i][j]--;
-					if (!cover[i][j])
+					if (!cover[i][j] && !(i==0 && j==0))
 						nbNotCoveredPositions++;
 				}
 			}
@@ -164,7 +164,7 @@ vector<pair<int, int> > Problem::getNotCoveredPositions() {
 	vector<pair<int, int> > notCoveredPositions;
 	for (int r = 0; r<dimensions.first; r++) {
 		for (int c = 0; c<dimensions.second; c++) {
-			if (!cover[r][c])
+			if (!cover[r][c] && !(r==0 && c==0))
 				notCoveredPositions.push_back(make_pair(r, c));
 		}
 	}
@@ -197,11 +197,16 @@ vector<vector<bool> > Problem::getConnectedSensors() {
 
 
 
-void Problem::randomFeasibleSolution() {
+void Problem::randomFeasibleSolution(const vector<pair<int, int> > & goodCoordinates) {
 	// empty the grid
 	for (int r = 0; r < dimensions.first; r++)
 		for (int c = 0; c < dimensions.second; c++)
 			removeSensor(r, c);
+
+	// place sensors at positions in goodCoordinates
+	for (auto it = goodCoordinates.begin(); it < goodCoordinates.end(); it++) {
+		placeSensor((*it).first, (*it).second);
+	}
 	
 	vector<pair<int, int> > notCoveredPositions;
 	// place sensors at random positions while not all positions in the grid are covered
@@ -226,9 +231,15 @@ void Problem::randomFeasibleSolution() {
 	for (int r = 0; r<dimensions.first; r++) {
 		for (int c = 0; c<dimensions.second; c++) {
 			if (grid[r][c]) {
-				removeSensor(r, c);
-				if (nbNotCoveredPositions > 0 || nbConnectedComponents > 1)
-					placeSensor(r, c);
+				bool removable = true;
+				for (auto it = goodCoordinates.begin(); it < goodCoordinates.end(); it++) {
+					removable = removable && !((*it) == make_pair(r, c));
+				}
+				if (removable) {
+					removeSensor(r, c);
+					if (nbNotCoveredPositions > 0 || nbConnectedComponents > 1)
+						placeSensor(r, c);
+				}
 			}
 		}
 	}
@@ -513,7 +524,7 @@ int Problem::lowerBound() {
 
 
 float Problem::getObjectiveValue() {
-	return nbSensors + ALPHA * nbNotCoveredPositions + BETA * (getNbCCTest() - 1);
+	return nbSensors + ALPHA * nbNotCoveredPositions + BETA * (nbConnectedComponents - 1);
 }
 
 
